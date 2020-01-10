@@ -8,7 +8,7 @@ FastLin combines reachability analysis with binary search to find maximum allowa
 # Problem requirement
 1. Network: any depth, ReLU activation
 2. Input: hypercube
-3. Output: halfspace
+3. Output: AbstractPolytope
 
 # Return
 `AdversarialResult`
@@ -34,8 +34,8 @@ Sound but not complete.
 end
 
 function solve(solver::FastLin, problem::Problem)
-    ϵ = fill(solver.ϵ0, solver.maxIter+1)
     ϵ_upper = 2 * max(solver.ϵ0, maximum(problem.input.radius))
+    ϵ = fill(maximum(problem.input.radius), solver.maxIter+1)
     ϵ_lower = 0.0
     n_input = dim(problem.input)
     for i = 1:solver.maxIter
@@ -50,10 +50,10 @@ function solve(solver::FastLin, problem::Problem)
             ϵ[i+1] = (ϵ[i] + ϵ_lower) / 2
         end
     end
-    if ϵ_lower > minimum(problem.input.radius)
-        return AdversarialResult(:SAT, ϵ_lower) # previously :True
+    if ϵ_lower > maximum(problem.input.radius)
+        return AdversarialResult(:holds, ϵ_lower)
     else
-        return AdversarialResult(:UNSAT, ϵ_lower)
+        return AdversarialResult(:violated, ϵ_lower)
     end
 end
 

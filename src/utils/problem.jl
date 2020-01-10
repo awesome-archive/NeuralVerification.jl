@@ -1,15 +1,49 @@
+
 """
-    Problem(network, input, output)
+    PolytopeComplement
+
+The complement to a given set. Note that in general, a `PolytopeComplement` is not necessarily a convex set.
+Also note that `PolytopeComplement`s are open by definition.
+
+### Examples
+```julia
+julia> H = Hyperrectangle([0,0], [1,1])
+Hyperrectangle{Int64}([0, 0], [1, 1])
+
+julia> PC = complement(H)
+PolytopeComplement of:
+  Hyperrectangle{Int64}([0, 0], [1, 1])
+
+julia> center(H) ∈ PC
+false
+
+julia> high(H).+[1,1] ∈ PC
+true
+```
+"""
+struct PolytopeComplement{S<:LazySet}
+    P::S
+end
+
+Base.show(io::IO, PC::PolytopeComplement) = (println(io, "PolytopeComplement of:"), println(io, "  ", PC.P))
+LazySets.issubset(s, PC::PolytopeComplement) = LazySets.is_intersection_empty(s, PC.P)
+LazySets.is_intersection_empty(s, PC::PolytopeComplement) = LazySets.issubset(s, PC.P)
+LazySets.tohrep(PC::PolytopeComplement) = PolytopeComplement(convert(HPolytope, PC.P))
+Base.in(pt, PC::PolytopeComplement) = pt ∉ PC.P
+complement(PC::PolytopeComplement)  = PC.P
+complement(P::LazySet) = PolytopeComplement(P)
+# etc.
+
+
+"""
+    Problem{P, Q}(network::Network, input::P, output::Q)
 
 Problem definition for neural verification.
-- `network` is of type `Network`
-- `input` belongs to `AbstractPolytope` in `LazySets.jl`
-- `output` belongs to `AbstractPolytope` in `LazySets.jl`
 
 The verification problem consists of: for all  points in the input set,
 the corresponding output of the network must belong to the output set.
 """
-struct Problem{P<:AbstractPolytope, Q<:AbstractPolytope}
+struct Problem{P, Q}
     network::Network
     input::P
     output::Q
@@ -26,7 +60,7 @@ abstract type Result end
 status(result::Result) = result.status
 
 function validate_status(st::Symbol)
-    @assert st ∈ (:SAT, :UNSAT, :Unknown) "unexpected status code: `:$st`.\nOnly (:SAT, :UNSAT, :Unknown) are accepted"
+    @assert st ∈ (:holds, :violated, :unknown) "unexpected status code: `:$st`.\nOnly (:holds, :violated, :unknown) are accepted"
     return st
 end
 
@@ -35,9 +69,9 @@ end
 
 Result type that captures whether the input-output constraint is satisfied.
 Possible status values:\n
-    :SAT (io constraint is satisfied always)\n
-    :UNSAT (io constraint is violated)\n
-    :Unknown (could not be determined)
+    :holds (io constraint is satisfied always)\n
+    :violated (io constraint is violated)\n
+    :unknown (could not be determined)
 """
 struct BasicResult <: Result
     status::Symbol
@@ -46,7 +80,7 @@ end
 """
     CounterExampleResult(status, counter_example)
 
-Like `BasicResult`, but also returns a `counter_example` if one is found (if status = :UNSAT).
+Like `BasicResult`, but also returns a `counter_example` if one is found (if status = :violated).
 The `counter_example` is a point in the input set that, after the NN, lies outside the output set.
 """
 struct CounterExampleResult <: Result
@@ -58,7 +92,7 @@ end
 """
     AdversarialResult(status, max_disturbance)
 
-Like `BasicResult`, but also returns the maximum allowable disturbance in the input (if status = :UNSAT).
+Like `BasicResult`, but also returns the maximum allowable disturbance in the input (if status = :violated).
 """
 struct AdversarialResult <: Result
 	status::Symbol
@@ -69,7 +103,7 @@ end
 """
     ReachabilityResult(status, reachable)
 
-Like `BasicResult`, but also returns the output reachable set given the input constraint (if status = :UNSAT).
+Like `BasicResult`, but also returns the output reachable set given the input constraint (if status = :violated).
 """
 struct ReachabilityResult <: Result
 	status::Symbol

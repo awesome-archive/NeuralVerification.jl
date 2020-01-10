@@ -34,6 +34,7 @@ The verification methods are divided into five categories:
 [Planet](https://arxiv.org/abs/1705.01320),
 [Reluplex](https://arxiv.org/abs/1702.01135)
 
+Reference: C. Liu, T. Arnon, C. Lazarus, C. Barrett, and M. Kochenderfer, "Algorithms for Verifying Neural Networks," [arXiv:1903.06758](https://arxiv.org/abs/1903.06758).
 
 ## Installation
 To download this library, clone it from the julia package manager like so:
@@ -42,7 +43,7 @@ To download this library, clone it from the julia package manager like so:
 ```
 
 Please note that the implementations of the algorithms are pedagogical in nature, and so may not perform optimally.
-Derivation and discussion of these algorithms is presented in _link to paper_.
+Derivation and discussion of these algorithms is presented in the survey paper linked above.
 
 *Note:* At present, `Ai2`, `ExactReach`, and `Duality` do not work in higher dimensions (e.g. image classification).
 This is being addressed in [#9](https://github.com/sisl/NeuralVerification.jl/issues/9)
@@ -66,10 +67,10 @@ problem = Problem(nnet, input_set, output_set)
 ### Solve
 ```julia
 julia> result = solve(solver, problem)
-CounterExampleResult(:UNSAT, [1.0])
+CounterExampleResult(:violated, [1.0])
 
 julia> result.status
-:UNSAT
+:violated
 ```
 
 For a full list of `Solvers` and their properties, requirements, and `Result` types, please refer to the documentation.

@@ -6,7 +6,7 @@ ReluVal combines symbolic reachability analysis with iterative interval refineme
 # Problem requirement
 1. Network: any depth, ReLU activation
 2. Input: hyperrectangle
-3. Output: hpolytope
+3. Output: AbstractPolytope
 
 # Return
 `CounterExampleResult` or `ReachabilityResult`
@@ -49,10 +49,10 @@ end
 function solve(solver::ReluVal, problem::Problem)
     reach = forward_network(solver, problem.network, problem.input)
     result = check_inclusion(reach.sym, problem.output, problem.network)
-    result.status == :Unknown || return result
+    result.status == :unknown || return result
     reach_list = SymbolicIntervalMask[reach]
     for i in 2:solver.max_iter
-        length(reach_list) > 0 || return BasicResult(:SAT)
+        length(reach_list) > 0 || return BasicResult(:holds)
         reach = pick_out!(reach_list, solver.tree_search)
         LG, UG = get_gradient(problem.network, reach.LΛ, reach.UΛ)
         feature = get_smear_index(problem.network, reach.sym.interval, LG, UG)
@@ -60,11 +60,11 @@ function solve(solver::ReluVal, problem::Problem)
         for interval in intervals
             reach = forward_network(solver, problem.network, interval)
             result = check_inclusion(reach.sym, problem.output, problem.network)
-            result.status == :UNSAT && return result
-            result.status == :SAT || (push!(reach_list, reach))
+            result.status == :violated && return result
+            result.status == :holds || (push!(reach_list, reach))
         end
     end
-    return BasicResult(:Unknown)
+    return BasicResult(:unknown)
 end
 
 function pick_out!(reach_list, tree_search)
@@ -85,26 +85,26 @@ function symbol_to_concrete(reach::SymbolicInterval)
     lower = zeros(n_output)
     for i in 1:n_output
         lower[i] = lower_bound(reach.Low[i, :], reach.interval)
-        upper[i] = upper_bound(reach.Low[i, :], reach.interval)
+        upper[i] = upper_bound(reach.Up[i, :], reach.interval)
     end
     return Hyperrectangle(low = lower, high = upper)
 end
 
 function check_inclusion(reach::SymbolicInterval, output::AbstractPolytope, nnet::Network)
     reachable = symbol_to_concrete(reach)
-    issubset(reachable, output) && return BasicResult(:SAT)
-    is_intersection_empty(reachable, output) && return BasicResult(:UNSAT)
+    issubset(reachable, output) && return BasicResult(:holds)
+    # is_intersection_empty(reachable, output) && return BasicResult(:violated)
 
     # Sample the middle point
     middle_point = (high(reach.interval) + low(reach.interval))./2
     y = compute_output(nnet, middle_point)
-    ∈(y, output) || return CounterExampleResult(:UNSAT, middle_point)
+    ∈(y, output) || return CounterExampleResult(:violated, middle_point)
 
-    return BasicResult(:Unknown)
+    return BasicResult(:unknown)
 end
 
 function forward_layer(solver::ReluVal, layer::Layer, input::Union{SymbolicIntervalMask, Hyperrectangle})
-    return forward_act(forward_linear(input, layer))
+    return forward_act(forward_linear(input, layer), layer)
 end
 
 # Symbolic forward_linear for the first layer
@@ -128,7 +128,7 @@ function forward_linear(input::SymbolicIntervalMask, layer::Layer)
 end
 
 # Symbolic forward_act
-function forward_act(input::SymbolicIntervalMask)
+function forward_act(input::SymbolicIntervalMask, layer::Layer{ReLU})
     n_node, n_input = size(input.sym.Up)
     output_Low, output_Up = input.sym.Low[:, :], input.sym.Up[:, :]
     mask_lower, mask_upper = zeros(Int, n_node), ones(Int, n_node)
@@ -154,6 +154,15 @@ function forward_act(input::SymbolicIntervalMask)
     sym = SymbolicInterval(output_Low, output_Up, input.sym.interval)
     LΛ = push!(input.LΛ, mask_lower)
     UΛ = push!(input.UΛ, mask_upper)
+    return SymbolicIntervalMask(sym, LΛ, UΛ)
+end
+
+# Symbolic forward_act
+function forward_act(input::SymbolicIntervalMask, layer::Layer{Id})
+    sym = input.sym
+    n_node = size(input.sym.Up, 1)
+    LΛ = push!(input.LΛ, ones(Int, n_node))
+    UΛ = push!(input.UΛ, ones(Int, n_node))
     return SymbolicIntervalMask(sym, LΛ, UΛ)
 end
 

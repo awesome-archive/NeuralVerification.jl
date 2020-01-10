@@ -6,7 +6,7 @@ MIPVerify computes maximum allowable disturbance using mixed integer linear prog
 # Problem requirement
 1. Network: any depth, ReLU activation
 2. Input: hyperrectangle
-3. Output: halfspace
+3. Output: PolytopeComplement
 
 # Return
 `AdversarialResult`
@@ -26,25 +26,25 @@ V. Tjeng, K. Xiao, and R. Tedrake,
 
 [https://github.com/vtjeng/MIPVerify.jl](https://github.com/vtjeng/MIPVerify.jl)
 """
-@with_kw struct MIPVerify{O<:AbstractMathProgSolver}
-    optimizer::O
+@with_kw struct MIPVerify
+    optimizer = GLPK.Optimizer
 end
 
 function solve(solver::MIPVerify, problem::Problem)
-    model = Model(solver = solver.optimizer)
+    model = Model(solver)
     neurons = init_neurons(model, problem.network)
     deltas = init_deltas(model, problem.network)
     add_complementary_set_constraint!(model, problem.output, last(neurons))
     bounds = get_bounds(problem)
-    encode_mip_constraint!(model, problem.network, bounds, neurons, deltas)
+    encode_network!(model, problem.network, neurons, deltas, bounds, BoundedMixedIntegerLP())
     o = max_disturbance!(model, first(neurons) - problem.input.center)
-    status = solve(model, suppress_warnings = true)
-    if status == :Infeasible
-        return AdversarialResult(:SAT)
+    optimize!(model)
+    if termination_status(model) == INFEASIBLE
+        return AdversarialResult(:holds)
     end
-    if getvalue(o) >= minimum(problem.input.radius)
-        return AdversarialResult(:SAT)
+    if value(o) >= maximum(problem.input.radius)
+        return AdversarialResult(:holds)
     else
-        return AdversarialResult(:UNSAT, getvalue(o))
+        return AdversarialResult(:violated, value(o))
     end
 end

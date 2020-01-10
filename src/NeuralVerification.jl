@@ -1,34 +1,42 @@
 module NeuralVerification
 
-__precompile__(false)
+using JuMP
 
-using Reexport # once development slows down, remove this requirement in favor of only exporting what we need from each package
-# for Feasibility
-@reexport using JuMP
-@reexport using MathProgBase.SolverInterface
-@reexport using GLPKMathProgInterface
-@reexport using PicoSAT # needed for Planet
-@reexport using SCS     # needed for Certify and Duality
-# for Reachability
-@reexport using LazySets
-using Polyhedra
-using CDDLib
+using GLPK, SCS # SCS only needed for Certify
+using PicoSAT # needed for Planet
+using LazySets, LazySets.Approximations
+using Polyhedra, CDDLib
+
 using LinearAlgebra
 using Parameters
 using Interpolations # only for PiecewiseLinear
 
 import LazySets: dim, HalfSpace # necessary to avoid conflict with Polyhedra
 
+using Requires
+
 # abstract type Solver end # no longer needed
+
+# For optimization methods:
+import JuMP.MOI.OPTIMAL, JuMP.MOI.INFEASIBLE
+JuMP.Model(solver) = Model(with_optimizer(solver.optimizer))
+JuMP.value(vars::Vector{VariableRef}) = value.(vars)
 
 include("utils/activation.jl")
 include("utils/network.jl")
 include("utils/problem.jl")
 include("utils/util.jl")
+
+function __init__()
+  @require Flux="587475ba-b771-5e3f-ad9e-33799f191a9c" include("utils/flux.jl")
+end
+
 export
     Solver,
     Network,
     AbstractActivation,
+    PolytopeComplement,
+    complement,
     # NOTE: not sure if exporting these is a good idea as far as namespace conflicts go:
     # ReLU,
     # Max,
@@ -46,9 +54,8 @@ export
     forward_network,
     check_inclusion
 
-solve(m::Model) = JuMP.solve(m) ## TODO find a place for this
 solve(m::Model; kwargs...) = JuMP.solve(m; kwargs...)
-# export solve
+export solve
 
 # TODO: consider creating sub-modules for each of these.
 include("optimization/utils/constraints.jl")
@@ -69,10 +76,12 @@ include("reachability/ai2.jl")
 export ExactReach, MaxSens, Ai2
 
 include("satisfiability/bab.jl")
-include("satisfiability/planet.jl")
 include("satisfiability/sherlock.jl")
 include("satisfiability/reluplex.jl")
-export BaB, Planet, Sherlock, Reluplex
+export BaB, Sherlock, Reluplex
+
+include("satisfiability/planet.jl")
+export Planet
 
 include("adversarial/reluVal.jl")
 include("adversarial/fastLin.jl")
